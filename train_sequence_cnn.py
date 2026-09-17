@@ -20,6 +20,7 @@ ACTORS_PATH = os.path.join(DATA_DIR, "actor_ids.npy")
 MODEL_PATH = os.path.join("models", "cnn_sequence_ser.keras")
 METRICS_PATH = os.path.join("models", "cnn_sequence_metrics.json")
 
+SPLIT_SEED=42
 if __name__ == "__main__":
     required_paths = (
         X_CLEAN_PATH,
@@ -38,6 +39,7 @@ if __name__ == "__main__":
         np.load(X_AUGMENTED_PATH),
         np.load(Y_PATH),
         np.load(ACTORS_PATH),
+        random_state=SPLIT_SEED,
     )
 
     os.makedirs("models", exist_ok=True)

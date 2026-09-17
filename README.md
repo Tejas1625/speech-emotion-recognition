@@ -96,7 +96,7 @@ speech-emotion-recognition/
 ├── requirements.txt
 ├── app.py                         # Streamlit inference interface
 ├── extract_sequence_data.py       # Creates log-Mel spectrogram arrays
-├── train_sequence_cnn.py          # Trains the final 2D CNN
+├── train_sequence_cnn.py          # Final 2D CNN training script
 │
 ├── src/
 │   ├── sequence_features.py       # Audio loading and log-Mel extraction
@@ -105,12 +105,12 @@ speech-emotion-recognition/
 │   └── visualizations.py          # Confusion-matrix visualization
 │
 ├── data/                          # Local only; ignored by Git
-│   ├──|
-│   │  └── RAVDESS/
-│   └── processed_sequence/
+│   ├── RAVDESS/                   # Downloaded dataset
+│   └── processed_sequence/        # Generated NumPy arrays
 │
 └── models/                        # Local only; ignored by Git
-    └── cnn_sequence_ser.keras
+    ├── cnn_sequence_ser.keras     # Trained model
+    └── cnn_sequence_metrics.json  # Evaluation metrics
 ```
 
 ## Dataset
