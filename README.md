@@ -1,99 +1,168 @@
-# Speech Emotion Recognition (SER)
+# Speech Emotion Recognition
+
+An end-to-end machine-learning application that classifies spoken WAV audio into eight emotion classes using a 2D Convolutional Neural Network (CNN) trained on log-Mel spectrograms.
 
 ## Project Overview
-**SER** is a deep learning-based audio processing system designed to analyze raw human speech and classify it into one of eight distinct emotional states (e.g., Happy, Sad, Angry, Fearful). 
 
-Unlike traditional image-based spectrogram models, this project focuses on **hardware efficiency** and **raw signal processing**:
-1.  **Decoupled Architecture:** Utilizes a highly optimized 3-block 1D-Convolutional Neural Network (1D-CNN) that processes 1D audio arrays directly, significantly reducing computational overhead.
-2.  **Acoustic Feature Extraction:** Mathematically transforms raw audio waves into robust numerical representations using MFCCs, Zero-Crossing Rate (ZCR), and RMS energy.
+Speech Emotion Recognition (SER) identifies emotional patterns in spoken audio. This project converts uploaded speech into log-Mel spectrograms and uses a 2D CNN to predict one of eight emotion categories.
+
+The project includes:
+
+- A reproducible feature-extraction and training pipeline.
+- Actor-held-out evaluation for reliable unseen-speaker testing.
+- A Streamlit interface for interactive WAV-file predictions.
+- Probability visualization across all emotion classes.
+
+## Emotion Classes
+
+- Neutral
+- Calm
+- Happy
+- Sad
+- Angry
+- Fearful
+- Disgust
+- Surprised
 
 ## Key Features
-- **Dynamic Data Augmentation:** Automatically injects white noise and applies pitch shifting to the audio data during preprocessing to prevent model overfitting.
-- **High-Accuracy Classification:** Outperforms classical machine learning baselines (SVM, Random Forests) by achieving ~81% validation accuracy through gradient descent optimization.
-- **Multiclass Emotion Detection:** Successfully maps complex audio signals to 8 distinct emotional categories.
-- **End-to-End Pipeline:** Includes standalone scripts for dataset loading, feature extraction, and model training.
-- **Interactive Web Interface:** Deployed a user-friendly frontend using Streamlit (via app.py) allowing users to upload .wav files and see real-time emotion predictions and probability distributions.
+
+- **Log-Mel Feature Extraction:** Converts raw speech audio into normalized 64-band log-Mel spectrograms.
+- **2D CNN Classification:** Learns time-frequency emotion patterns directly from spectrograms.
+- **Actor-Held-Out Evaluation:** Ensures speakers in the test set are not seen during training, preventing speaker leakage.
+- **Multi-Split Validation:** Reports average performance across three actor-disjoint splits.
+- **Interactive Streamlit Interface:** Allows users to upload WAV files and view predictions with confidence scores.
+- **Reproducible Pipeline:** Separates raw data, processed NumPy arrays, saved models, training code, and inference code.
+
+## Evaluation Methodology
+
+A random clip-level train/test split can inflate results because recordings from the same speaker may appear in both training and testing sets.
+
+To avoid this, the final model uses actor-held-out evaluation:
+
+- Training, validation, and test sets contain different actors.
+- Test actors are completely unseen during model training.
+- Performance is evaluated using accuracy and macro-F1.
+- Results are averaged across three actor-split seeds.
+
+## Final Results
+
+| Actor Split Seed | Accuracy | Macro-F1 |
+|---:|---:|---:|
+| 42 | 53.3% | 51.5% |
+| 7 | 63.0% | 61.5% |
+| 19 | 48.7% | 46.6% |
+| **Average** | **55.0%** | **53.2%** |
+
+The average is reported instead of the best split because RAVDESS has a limited number of speakers, and results naturally vary depending on the held-out actors.
+
+## Model Pipeline
+
+```text
+WAV Audio
+   ↓
+Resample to 22,050 Hz and fix duration to 3 seconds
+   ↓
+64-band Log-Mel Spectrogram
+   ↓
+2D CNN Blocks
+Conv2D → Batch Normalization → Max Pooling → Dropout
+   ↓
+Global Average Pooling
+   ↓
+Dense Softmax Classifier
+   ↓
+8 Emotion Classes
+```
 
 ## Tech Stack
-- **Backend:** Python
-- **Frontend/UI:** Streamlit
-- **Deep Learning:** TensorFlow, Keras (1D-CNN)
-- **Machine Learning:** Scikit-learn (Baselines, Validation)
-- **Audio Processing:** Librosa
-- **Data Manipulation:** NumPy, Pandas
 
-## Dataset
-The model was trained on the **RAVDESS** (Ryerson Audio-Visual Database of Emotional Speech and Song) dataset, a validated collection of emotional speech audio files.
-
-- **Format:** `.wav` files
-- **Labels:** *Neutral, Calm, Happy, Sad, Angry, Fearful, Disgust, Surprised*.
-
-### How to Get the Data
-Due to GitHub's file size limits for media, the raw audio dataset must be downloaded externally.
-- **Download:** [RAVDESS Emotional Speech Audio (Kaggle)](https://www.kaggle.com/datasets/uwrfkaggler/ravdess-emotional-speech-audio)
-- **Setup:** Extract the downloaded archive and move all the `Actor_XX` folders into the `data/raw/` directory of this project.
+| Category | Technologies |
+|---|---|
+| Language | Python |
+| Deep Learning | TensorFlow, Keras |
+| Audio Processing | Librosa |
+| Data Processing | NumPy, Pandas |
+| Evaluation | scikit-learn |
+| Visualization | Matplotlib, Seaborn |
+| Interactive Interface | Streamlit |
 
 ## Project Structure
+
 ```text
 speech-emotion-recognition/
 │
-├── .gitignore                # Tells Git to skip .venv, data, and models
-├── app.py                    # Main Flask application / API
-├── extract_data.py           # Script for dataset extraction
-├── train_DL.py               # Deep Learning (1D-CNN) training script
-├── train_classicalML.py      # Classical ML (SVM, Random Forest) training script
-├── requirements.txt          # Python dependencies
-├── README.md                 # Project documentation
+├── .gitignore
+├── README.md
+├── requirements.txt
+├── app.py                         # Streamlit inference interface
+├── extract_sequence_data.py       # Creates log-Mel spectrogram arrays
+├── train_sequence_cnn.py          # Trains the final 2D CNN
 │
-├── src/                      # Core modules
-│   ├── classical_models.py   # Baseline ML model definitions
-│   ├── deep_models.py        # 1D-CNN architecture definition
-│   ├── data_loader.py        # Data loading & preprocessing utilities
-│   ├── feature_extraction.py # MFCCs, ZCR, and RMS energy extraction
-│   └── visualizations.py     # Plotting functions for confusion matrices
+├── src/
+│   ├── sequence_features.py       # Audio loading and log-Mel extraction
+│   ├── sequence_models.py         # 2D CNN architecture and training logic
+│   ├── splitting.py               # Actor-held-out splitting logic
+│   └── visualizations.py          # Confusion-matrix visualization
 │
-├── assets/                   # Evaluation plots and images
-│   ├── cml_confusion_matrix.png
-│   └── cnn_confusion_matrix.png
+├── data/                          # Local only; ignored by Git
+│   ├──|
+│   │  └── RAVDESS/
+│   └── processed_sequence/
 │
-├── data/                     # Local data storage (ignored by git)
-└── models/                   # Saved model weights (ignored by git)
+└── models/                        # Local only; ignored by Git
+    └── cnn_sequence_ser.keras
 ```
-## How to Run Locally
 
-### 1. Clone the Repository
+## Dataset
+
+This project uses the speech portion of the RAVDESS dataset:
+
+> Livingstone, S. R., & Russo, F. A. (2018). The Ryerson Audio-Visual Database of Emotional Speech and Song (RAVDESS).
+
+Download the dataset here:
+
+[RAVDESS Emotional Speech Audio Dataset](https://www.kaggle.com/datasets/uwrfkaggler/ravdess-emotional-speech-audio)
+
+After downloading, place the `Actor_XX` folders under:
+
+```text
+data/raw/RAVDESS/
+```
+
+The raw dataset is excluded from this repository because of file-size constraints.
+
+## Installation
+
 ```bash
 git clone https://github.com/Tejas1625/speech-emotion-recognition.git
 cd speech-emotion-recognition
-```
-### 2. Install Dependencies 
-- Ensure you have Python 3.8+ installed
-```bash
 pip install -r requirements.txt
 ```
-### 3. Set up Data
-- Download the RAVDESS dataset from Kaggle.
-- Extract and place the Actor folders directly into the `data/` directory.
 
-### 4. Extract data and features
-- Run the extraction script to process the raw .wav files into numerical arrays (MFCCs).
+## Run Locally
+
+### 1. Extract log-Mel spectrogram features
+
 ```bash
-python extract_data.py
+python extract_sequence_data.py
 ```
-- **Result:** This will populate the `data/` folder with .npy feature files.
 
-### 5. Train the Models
-- Train the classical ML models and 1D-CNN architecture on the processed features.
+### 2. Train the 2D CNN
+
 ```bash
-python train_classicalML.py
-python train_DL.py
+python train_sequence_cnn.py
 ```
-- **Result:** This trains the network, outputs the validation accuracy metrics, and saves the final architecture to `models/`
 
-### 6. Start the Application
-Launch the Streamlit frontend to interact with the trained model:
-```Bash
+### 3. Launch the Streamlit interface
+
+```bash
 streamlit run app.py
 ```
-- **Open Browser:** This will automatically open a local web server (usually at http://localhost:8501).
-- **Test It:** Upload a .wav file through the UI to see the model predict the emotion in real-time.
+
+Upload a `.wav` speech file to view the predicted emotion and class-probability distribution.
+
+## Notes
+
+- This is an educational machine-learning project.
+- It predicts acoustic emotion patterns from speech and is not a clinical or mental-health assessment tool.
+- The dataset, generated features, and trained model are excluded from GitHub through `.gitignore`.

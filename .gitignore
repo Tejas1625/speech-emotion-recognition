@@ -15,6 +15,7 @@ data/processed/*
 models/*.h5
 models/*.pkl
 models/*.joblib
+models/*.keras
 
 # OS Junk
 .DS_Store

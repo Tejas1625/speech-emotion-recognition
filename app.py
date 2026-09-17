@@ -1,91 +1,231 @@
+import io
 import os
 
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-import streamlit as st
-import numpy as np
 import librosa
-import joblib
+import numpy as np
+import pandas as pd
+import streamlit as st
 from tensorflow.keras.models import load_model
 
-EMOTIONS = ['Neutral', 'Calm', 'Happy', 'Sad', 'Angry', 'Fearful', 'Disgust', 'Surprised']
 
-st.set_page_config(page_title="SER Dashboard", page_icon="🎙️", layout="wide")
-st.title("🎙️ Speech Emotion Recognition (SER)")
-st.markdown("An Acoustic Pattern Classification System evaluating Classical ML vs. Deep Learning.")
+# These values must match the preprocessing used in sequence_features.py.
+SAMPLE_RATE = 22_050
+DURATION_SECONDS = 3
+N_MELS = 64
+N_FFT = 1024
+HOP_LENGTH = 512
+
+MODEL_PATH = os.path.join("models", "cnn_sequence_ser.keras")
+
+EMOTIONS = [
+    "Neutral",
+    "Calm",
+    "Happy",
+    "Sad",
+    "Angry",
+    "Fearful",
+    "Disgust",
+    "Surprised",
+]
 
 
-# --- Load Models & Scaler ---
+st.set_page_config(
+    page_title="Speech Emotion Recognition",
+    page_icon="🎙️",
+    layout="wide",
+)
+
+
 @st.cache_resource
-def load_saved_models():
+def load_saved_model():
+    """
+    Loads the final 2D CNN once and reuses it across Streamlit reruns.
+    """
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(
+            f"Model not found at '{MODEL_PATH}'. "
+            "Run train_sequence_cnn.py first."
+        )
+
+    return load_model(MODEL_PATH, compile=False)
+
+
+def audio_to_log_mel(file_bytes):
+    """
+    Converts an uploaded WAV file into the same normalized log-Mel
+    spectrogram representation used during model training.
+
+    Output shape before the channel dimension: (64, time_frames)
+    """
+    audio, _ = librosa.load(
+        io.BytesIO(file_bytes),
+        sr=SAMPLE_RATE,
+        mono=True,
+    )
+
+    # Make every uploaded clip the same duration as training samples.
+    target_length = SAMPLE_RATE * DURATION_SECONDS
+    audio = librosa.util.fix_length(audio, size=target_length)
+
+    mel_spectrogram = librosa.feature.melspectrogram(
+        y=audio,
+        sr=SAMPLE_RATE,
+        n_mels=N_MELS,
+        n_fft=N_FFT,
+        hop_length=HOP_LENGTH,
+    )
+
+    log_mel = librosa.power_to_db(mel_spectrogram, ref=np.max)
+
+    # Per-sample normalization, matching the sequence-data pipeline.
+    mean = np.mean(log_mel)
+    standard_deviation = np.std(log_mel)
+
+    log_mel = (log_mel - mean) / (standard_deviation + 1e-8)
+
+    return log_mel.astype(np.float32)
+
+
+def predict_emotion(model, file_bytes):
+    """
+    Preprocesses uploaded audio and returns the predicted emotion
+    plus probability for every class.
+    """
+    log_mel = audio_to_log_mel(file_bytes)
+
+    # 2D CNN input shape:
+    # (batch_size, mel_bands, time_frames, channels)
+    model_input = log_mel[np.newaxis, ..., np.newaxis]
+
+    probabilities = model.predict(model_input, verbose=0)[0]
+    predicted_index = int(np.argmax(probabilities))
+
+    return EMOTIONS[predicted_index], probabilities
+
+
+def main():
+    st.title("🎙️ Speech Emotion Recognition")
+    st.caption(
+        "8-class emotion classification using a 2D CNN trained on "
+        "log-Mel spectrograms."
+    )
+
+    st.info(
+        "Educational demonstration only. This model predicts acoustic "
+        "emotion patterns and is not a clinical, psychological, or "
+        "mental-health assessment tool."
+    )
+
     try:
-        ml = joblib.load(os.path.join('models', 'classical_ser.pkl'))
-        cnn = load_model(os.path.join('models', 'cnn_ser.h5'))
-        cnn_scaler = joblib.load(os.path.join('models', 'cnn_scaler.pkl'))  # LOAD SCALER
-        return ml, cnn, cnn_scaler
-    except Exception as e:
-        st.error(f"Models/Scaler not found. Please run the training scripts first. Details: {e}")
-        return None, None, None
+        model = load_saved_model()
+    except Exception as error:
+        st.error(f"Unable to load the trained model: {error}")
+        st.stop()
 
+    prediction_tab, evaluation_tab = st.tabs(
+        ["🎧 Predict Emotion", "📊 Model Evaluation"]
+    )
 
-ml_model, cnn_model, cnn_scaler = load_saved_models()
+    with prediction_tab:
+        st.subheader("Upload WAV Audio")
 
-tab1, tab2 = st.tabs(["🔴 Live Prediction Engine", "📊 Model Analytics"])
+        uploaded_file = st.file_uploader(
+            "Choose a WAV file",
+            type=["wav"],
+            help="For best results, upload spoken audio.",
+        )
 
-with tab1:
-    st.subheader("Upload Audio for Inference")
-
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        model_choice = st.radio("Select Engine:", ("1D-CNN (Deep Learning)", "Tuned Classical ML"))
-        uploaded_file = st.file_uploader("Choose a .wav file", type=["wav"])
-
-    with col2:
         if uploaded_file is not None:
-            st.audio(uploaded_file, format='audio/wav')
+            file_bytes = uploaded_file.getvalue()
 
-            with st.spinner("Extracting & Scaling Features..."):
+            st.audio(file_bytes, format="audio/wav")
+
+            if st.button("Predict Emotion", type="primary"):
                 try:
-                    audio, sample_rate = librosa.load(uploaded_file, res_type='kaiser_fast')
-                    mfccs = np.mean(librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=40).T, axis=0)
-                    zcr = np.mean(librosa.feature.zero_crossing_rate(y=audio).T, axis=0)
-                    rms = np.mean(librosa.feature.rms(y=audio).T, axis=0)
+                    with st.spinner("Extracting log-Mel features and predicting..."):
+                        predicted_emotion, probabilities = predict_emotion(
+                            model,
+                            file_bytes,
+                        )
 
-                    features = np.hstack((mfccs, zcr, rms))
-                    features = features.reshape(1, -1)
-                    extraction_success = True
-                except Exception as e:
-                    st.error(f"Processing failed: {e}")
-                    extraction_success = False
+                    st.success(
+                        f"Detected emotion: **{predicted_emotion}**"
+                    )
 
-            if extraction_success and ml_model and cnn_model:
-                st.markdown("### Prediction Results")
+                    probability_frame = pd.DataFrame(
+                        {
+                            "Emotion": EMOTIONS,
+                            "Probability": probabilities,
+                        }
+                    ).set_index("Emotion")
 
-                if model_choice == "Tuned Classical ML":
-                    # ML Pipeline scales the data automatically!
-                    pred_idx = ml_model.predict(features)[0]
-                    predicted_emotion = EMOTIONS[pred_idx]
-                    st.success(f"**Detected Emotion:** {predicted_emotion}")
+                    st.subheader("Prediction Confidence")
+                    st.bar_chart(probability_frame)
 
-                else:
-                    # CRITICAL FIX: Scale the CNN features manually
-                    features_scaled = cnn_scaler.transform(features)
-                    features_reshaped = np.expand_dims(features_scaled, axis=2)
+                    top_probability = float(np.max(probabilities))
+                    st.caption(
+                        f"Top predicted-class probability: "
+                        f"{top_probability:.1%}"
+                    )
 
-                    predictions = cnn_model.predict(features_reshaped)[0]
-                    pred_idx = np.argmax(predictions)
-                    predicted_emotion = EMOTIONS[pred_idx]
+                except Exception as error:
+                    st.error(
+                        "Audio processing failed. Ensure the uploaded file "
+                        f"is a valid WAV file. Details: {error}"
+                    )
 
-                    st.success(f"**Detected Emotion:** {predicted_emotion}")
-                    st.write("**Network Confidence Distribution:**")
-                    prob_dict = {EMOTIONS[i]: float(predictions[i]) for i in range(len(EMOTIONS))}
-                    st.bar_chart(prob_dict)
+    with evaluation_tab:
+        st.subheader("Leakage-Safe Evaluation")
 
-with tab2:
-    st.subheader("System Performance & Architecture")
-    col3, col4 = st.columns(2)
-    with col3:
-        st.markdown("#### 1D-Convolutional Neural Network")
-        st.metric(label="Validation Accuracy", value="~81.0%")
-    with col4:
-        st.markdown("#### Tuned Classical ML Engine")
-        st.metric(label="Validation Accuracy", value="~79.0%")
+        st.markdown(
+            """
+            The model was evaluated using **actor-held-out splits**:
+
+            - Audio from a test actor was never used during training.
+            - This avoids speaker leakage from random clip-level splits.
+            - Results are averaged across three different actor splits.
+            """
+        )
+
+        metric_column_1, metric_column_2, metric_column_3 = st.columns(3)
+
+        metric_column_1.metric(
+            "Average Accuracy",
+            "55.0%",
+        )
+
+        metric_column_2.metric(
+            "Average Macro-F1",
+            "53.2%",
+        )
+
+        metric_column_3.metric(
+            "Evaluation",
+            "Actor-held-out",
+        )
+
+        st.markdown("#### Split-wise Results")
+
+        results = pd.DataFrame(
+            {
+                "Actor Split Seed": [42, 7, 19],
+                "Accuracy": ["53.3%", "63.0%", "48.7%"],
+                "Macro-F1": ["51.5%", "61.5%", "46.6%"],
+            }
+        )
+
+        st.dataframe(
+            results,
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        st.caption(
+            "Variation across splits is expected because RAVDESS has a "
+            "limited number of speakers. The average is reported rather "
+            "than the best individual split."
+        )
+
+
+if __name__ == "__main__":
+    main()
