@@ -126,7 +126,7 @@ Download the dataset here:
 After downloading, place the `Actor_XX` folders under:
 
 ```text
-data/raw/RAVDESS/
+data/RAVDESS/
 ```
 
 The raw dataset is excluded from this repository because of file-size constraints.
