@@ -1,44 +1,59 @@
 import os
 import numpy as np
+
 from src.feature_extraction import extract_features
 
 
 def load_ravdess_data(data_path):
-    features, labels = [], []
+    """
+    Extract clean and augmented features separately.
 
-    print(f"\n--- SCANNING DIRECTORY: {data_path} ---")
-    actor_folders = [d for d in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, d))]
+    Augmented samples are not mixed into the dataset immediately.
+    Training scripts add them only to the training split, avoiding
+    original-versus-augmented audio leakage.
+    """
+    clean_features = []
+    augmented_features = []
+    labels = []
+    actor_ids = []
 
-    for actor_dir in actor_folders:
-        if actor_dir.startswith('.'): continue
-
+    # Each Actor_XX folder represents one speaker.
+    for actor_dir in sorted(os.listdir(data_path)):
         actor_path = os.path.join(data_path, actor_dir)
-        files = os.listdir(actor_path)
 
-        for file in files:
-            if not file.startswith('.') and file.lower().endswith(".wav"):
-                file_path = os.path.join(actor_path, file)
+        if actor_dir.startswith(".") or not os.path.isdir(actor_path):
+            continue
 
-                try:
-                    parts = file.split('-')
-                    if len(parts) < 3: continue
+        for filename in sorted(os.listdir(actor_path)):
+            if filename.startswith(".") or not filename.lower().endswith(".wav"):
+                continue
 
-                    emotion_label = int(parts[2]) - 1
+            try:
+                # RAVDESS filename format: modality-vocal-channel-emotion-...
+                # Emotion is the third part and is 1-indexed in the filename.
+                emotion_label = int(filename.split("-")[2]) - 1
+            except (IndexError, ValueError):
+                print(f"Skipping malformed filename: {filename}")
+                continue
 
-                    # 1. Extract and append the CLEAN audio
-                    data_clean = extract_features(file_path, augment=False)
-                    if data_clean is not None:
-                        features.append(data_clean)
-                        labels.append(emotion_label)
+            file_path = os.path.join(actor_path, filename)
 
-                    # 2. Extract and append the AUGMENTED audio
-                    data_augmented = extract_features(file_path, augment=True)
-                    if data_augmented is not None:
-                        features.append(data_augmented)
-                        labels.append(emotion_label)
+            # Generate aligned clean and augmented representations.
+            clean = extract_features(file_path, augment=False)
+            augmented = extract_features(file_path, augment=True)
 
-                except ValueError:
-                    pass  # Skip if filename is broken
+            # Keep only complete pairs.
+            if clean is None or augmented is None:
+                continue
 
-    print(f"Extraction complete. Total samples loaded: {len(features)}")
-    return np.array(features), np.array(labels)
+            clean_features.append(clean)
+            augmented_features.append(augmented)
+            labels.append(emotion_label)
+            actor_ids.append(actor_dir)
+
+    return (
+        np.asarray(clean_features),
+        np.asarray(augmented_features),
+        np.asarray(labels),
+        np.asarray(actor_ids),
+    )

@@ -1,33 +1,58 @@
+import json
 import os
-import joblib # Added joblib to save the scaler
+
+import joblib
 import numpy as np
 import tensorflow as tf
 
-tf.config.set_visible_devices([], 'GPU')
 from src.deep_models import run_cnn_model
 
-X_PATH = os.path.join('data', 'X_features.npy')
-Y_PATH = os.path.join('data', 'y_labels.npy')
-MODEL_SAVE_PATH = os.path.join('models', 'cnn_ser.h5')
-SCALER_SAVE_PATH = os.path.join('models', 'cnn_scaler.pkl') # New path
+# Reproducible initialization.
+np.random.seed(42)
+tf.random.set_seed(42)
+
+PROCESSED_DIR = os.path.join("data", "processed")
+
+X_CLEAN_PATH = os.path.join(PROCESSED_DIR, "X_clean.npy")
+X_AUGMENTED_PATH = os.path.join(PROCESSED_DIR, "X_augmented.npy")
+Y_PATH = os.path.join(PROCESSED_DIR, "y_labels.npy")
+ACTORS_PATH = os.path.join(PROCESSED_DIR, "actor_ids.npy")
+
+CNN_MODEL_PATH = os.path.join("models", "cnn_clean_only_ser.h5")
+SCALER_PATH = os.path.join("models", "cnn_clean_only_scaler.pkl")
+METRICS_PATH = os.path.join("models", "cnn_clean_only_metrics.json")
+
+# First experiment: test whether augmentation is reducing generalization.
+USE_AUGMENTATION = False
 
 if __name__ == "__main__":
-    np.random.seed(42)
-    tf.random.set_seed(42)
-    print("--- TRAINING DEEP LEARNING ---")
+    required_paths = (
+        X_CLEAN_PATH,
+        X_AUGMENTED_PATH,
+        Y_PATH,
+        ACTORS_PATH,
+    )
 
-    if os.path.exists(X_PATH) and os.path.exists(Y_PATH):
-        X = np.load(X_PATH)
-        y = np.load(Y_PATH)
-        print(f"Data loaded instantly! Shape: {X.shape}")
+    if not all(os.path.exists(path) for path in required_paths):
+        print("Processed data is missing. Run extract_data.py first.")
+        raise SystemExit(1)
 
-        # Catch both the model and the scaler
-        model, scaler = run_cnn_model(X, y)
+    model, scaler, metrics = run_cnn_model(
+        np.load(X_CLEAN_PATH),
+        np.load(X_AUGMENTED_PATH),
+        np.load(Y_PATH),
+        np.load(ACTORS_PATH),
+        use_augmentation=USE_AUGMENTATION,
+    )
 
-        # Save model AND scaler
-        model.save(MODEL_SAVE_PATH)
-        joblib.dump(scaler, SCALER_SAVE_PATH)
-        print(f"Successfully saved model to {MODEL_SAVE_PATH}")
-        print(f"Successfully saved scaler to {SCALER_SAVE_PATH}")
-    else:
-        print("Error: .npy files not found. Run extract_data.py first.")
+    os.makedirs("models", exist_ok=True)
+
+    model.save(CNN_MODEL_PATH)
+    joblib.dump(scaler, SCALER_PATH)
+
+    with open(METRICS_PATH, "w", encoding="utf-8") as file:
+        json.dump(metrics, file, indent=2)
+
+    print(f"\nSaved model: {CNN_MODEL_PATH}")
+    print(f"Saved scaler: {SCALER_PATH}")
+    print(f"Saved metrics: {METRICS_PATH}")

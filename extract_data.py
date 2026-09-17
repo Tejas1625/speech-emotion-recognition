@@ -1,25 +1,28 @@
 import os
 import numpy as np
 
-# Prevent OpenMP library collisions on Mac
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-
 from src.data_loader import load_ravdess_data
 
-# Point to your raw audio folder
-DATA_DIR = os.path.join("data", "RAVDESS")
+# Keep downloaded audio separate from generated arrays.
+RAW_DATA_DIR = os.path.join("data", "RAVDESS")
+PROCESSED_DIR = os.path.join("data", "processed")
 
 if __name__ == "__main__":
-    print("--- EXTRACTING AUDIO FEATURES ---")
-    print("This takes a few minutes, but you only do it ONCE!")
+    # Makes random augmentation reproducible across runs.
+    np.random.seed(42)
 
-    if os.path.exists(DATA_DIR):
-        X, y = load_ravdess_data(DATA_DIR)
+    if not os.path.exists(RAW_DATA_DIR):
+        print(f"RAVDESS folder not found: {RAW_DATA_DIR}")
+        raise SystemExit(1)
 
-        # Save the raw arrays directly into the data folder
-        np.save(os.path.join('data', 'X_features.npy'), X)
-        np.save(os.path.join('data', 'y_labels.npy'), y)
+    X_clean, X_augmented, y, actor_ids = load_ravdess_data(RAW_DATA_DIR)
 
-        print(f"Extraction Complete! Saved {len(X)} samples into the 'data' folder.")
-    else:
-        print(f"Error: Data folder not found at {DATA_DIR}")
+    # Creates the folder if it does not already exist.
+    os.makedirs(PROCESSED_DIR, exist_ok=True)
+
+    np.save(os.path.join(PROCESSED_DIR, "X_clean.npy"), X_clean)
+    np.save(os.path.join(PROCESSED_DIR, "X_augmented.npy"), X_augmented)
+    np.save(os.path.join(PROCESSED_DIR, "y_labels.npy"), y)
+    np.save(os.path.join(PROCESSED_DIR, "actor_ids.npy"), actor_ids)
+
+    print(f"Saved {len(X_clean)} original clips and aligned augmentations.")

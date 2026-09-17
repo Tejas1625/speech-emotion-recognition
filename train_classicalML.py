@@ -1,30 +1,55 @@
+import json
 import os
+
 import joblib
 import numpy as np
 
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-
 from src.classical_models import run_classical_models
-from src.visualizations import plot_confusion_matrix
 
-# Paths
-X_PATH = os.path.join('data', 'X_features.npy')
-Y_PATH = os.path.join('data', 'y_labels.npy')
-MODEL_SAVE_PATH = os.path.join('models', 'classical_ser.pkl')
+# Generated feature arrays from extract_data.py
+PROCESSED_DIR = os.path.join("data", "processed")
+
+X_CLEAN_PATH = os.path.join(PROCESSED_DIR, "X_clean.npy")
+X_AUGMENTED_PATH = os.path.join(PROCESSED_DIR, "X_augmented.npy")
+Y_PATH = os.path.join(PROCESSED_DIR, "y_labels.npy")
+ACTORS_PATH = os.path.join(PROCESSED_DIR, "actor_ids.npy")
+
+# Local trained-model artifacts
+MODEL_PATH = os.path.join("models", "classical_ser.pkl")
+METRICS_PATH = os.path.join("models", "classical_metrics.json")
 
 if __name__ == "__main__":
     np.random.seed(42)
-    print("--- TRAINING CLASSICAL ML ---")
 
-    if os.path.exists(X_PATH) and os.path.exists(Y_PATH):
-        X = np.load(X_PATH)
-        y = np.load(Y_PATH)
-        print(f"Data loaded instantly! Shape: {X.shape}")
+    # Stop early if extraction has not been run.
+    required_paths = (
+        X_CLEAN_PATH,
+        X_AUGMENTED_PATH,
+        Y_PATH,
+        ACTORS_PATH,
+    )
 
-        model = run_classical_models(X, y)
+    if not all(os.path.exists(path) for path in required_paths):
+        print("Processed data is missing. Run extract_data.py first.")
+        raise SystemExit(1)
 
-        # Save into your models folder
-        joblib.dump(model, MODEL_SAVE_PATH)
-        print(f"Successfully saved to {MODEL_SAVE_PATH}")
-    else:
-        print("Error: .npy files not found. Run extract_data.py first.")
+    # Load clean features, training-only augmentations, labels, and speaker IDs.
+    model, metrics = run_classical_models(
+        np.load(X_CLEAN_PATH),
+        np.load(X_AUGMENTED_PATH),
+        np.load(Y_PATH),
+        np.load(ACTORS_PATH),
+    )
+
+    # Create models/ automatically if it does not exist.
+    os.makedirs("models", exist_ok=True)
+
+    # Save the selected classical model and its exact evaluation metrics.
+    joblib.dump(model, MODEL_PATH)
+
+    with open(METRICS_PATH, "w", encoding="utf-8") as file:
+        json.dump(metrics, file, indent=2)
+
+    print(f"\nSelected model: {metrics['selected_model']}")
+    print(f"Saved model: {MODEL_PATH}")
+    print(f"Saved metrics: {METRICS_PATH}")
